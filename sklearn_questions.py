@@ -22,7 +22,6 @@ You can find more information on how they should be used in the following doc:
 https://scikit-learn.org/stable/developers/develop.html#rolling-your-own-estimator.
 Make sure to use them to pass `test_nearest_neighbor_check_estimator`.
 
-
 Detailed instructions for question 2:
 The data to split should contain the index or one column in
 datatime format. Then the aim is to split the data between train and test
@@ -48,24 +47,22 @@ from sklearn.metrics.pairwise import pairwise_distances
 
 to compute distances between 2 sets of samples.
 """
+
 import numpy as np
 import pandas as pd
 
-from sklearn.base import BaseEstimator, check_array
-from sklearn.base import ClassifierMixin
-
+from sklearn.base import BaseEstimator, ClassifierMixin, check_array
 from sklearn.calibration import check_classification_targets
 from sklearn.model_selection import BaseCrossValidator
-
-from sklearn.utils.validation import check_is_fitted
-from sklearn.utils.validation import validate_data
+from sklearn.utils.validation import check_is_fitted, validate_data
 from sklearn.metrics.pairwise import pairwise_distances
 
 
 class KNearestNeighbors(ClassifierMixin, BaseEstimator):
     """KNearestNeighbors classifier."""
 
-    def __init__(self, n_neighbors=1):  # noqa: D107
+    def __init__(self, n_neighbors=1):
+        """Initialize the classifier."""
         self.n_neighbors = n_neighbors
 
     def fit(self, X, y):
@@ -73,22 +70,21 @@ class KNearestNeighbors(ClassifierMixin, BaseEstimator):
 
         Parameters
         ----------
-        X : ndarray, shape (n_samples, n_features)
+        X : ndarray of shape (n_samples, n_features)
             Data to train the model.
-        y : ndarray, shape (n_samples,)
+        y : ndarray of shape (n_samples,)
             Labels associated with the training data.
 
         Returns
         -------
         self : instance of KNearestNeighbors
-            The current instance of the classifier
+            The current instance of the classifier.
         """
         X, y = validate_data(self, X, y)
         check_classification_targets(y)
         self.classes_ = np.unique(y)
         self.X_train_ = X
         self.y_train_ = y
-
         return self
 
     def predict(self, X):
@@ -96,26 +92,24 @@ class KNearestNeighbors(ClassifierMixin, BaseEstimator):
 
         Parameters
         ----------
-        X : ndarray, shape (n_test_samples, n_features)
+        X : ndarray of shape (n_test_samples, n_features)
             Data to predict on.
 
         Returns
         -------
-        y : ndarray, shape (n_test_samples,)
+        y_pred : ndarray of shape (n_test_samples,)
             Predicted class labels for each test data sample.
         """
         check_is_fitted(self, ["X_train_", "y_train_"])
         X = validate_data(self, X, reset=False)
         y_pred = np.empty(X.shape[0], dtype=self.y_train_.dtype)
 
-        distancies = pairwise_distances(
-            X, self.X_train_, metric="euclidean"
-        )
-        nearest_index = np.argsort(distancies, axis=1)[
-            :, : self.n_neighbors
-        ]
+        # Compute distances between test points and training points
+        distances = pairwise_distances(X, self.X_train_, metric="euclidean")
+        nearest_index = np.argsort(distances, axis=1)[:, : self.n_neighbors]
         nearest_labels = self.y_train_[nearest_index]
 
+        # Majority vote among nearest neighbors
         for i, labels in enumerate(nearest_labels):
             unique_labels, counts = np.unique(labels, return_counts=True)
             y_pred[i] = unique_labels[np.argmax(counts)]
@@ -127,13 +121,13 @@ class KNearestNeighbors(ClassifierMixin, BaseEstimator):
 
         Parameters
         ----------
-        X : ndarray, shape (n_samples, n_features)
+        X : ndarray of shape (n_samples, n_features)
             Data to score on.
-        y : ndarray, shape (n_samples,)
-            target values.
+        y : ndarray of shape (n_samples,)
+            Target values.
 
         Returns
-        ----------
+        -------
         score : float
             Accuracy of the model computed for the (X, y) pairs.
         """
@@ -141,8 +135,7 @@ class KNearestNeighbors(ClassifierMixin, BaseEstimator):
         X = check_array(X)
         y = check_array(y, ensure_2d=False)
         y_predict = self.predict(X)
-        score = np.mean(y_predict == y)
-        return float(score)
+        return float(np.mean(y_predict == y))
 
 
 class MonthlySplit(BaseCrossValidator):
@@ -155,13 +148,14 @@ class MonthlySplit(BaseCrossValidator):
     Parameters
     ----------
     time_col : str, defaults to 'index'
-        Column of the input DataFrame that will be used to split the data. This
-        column should be of type datetime. If split is called with a DataFrame
-        for which this column is not a datetime, it will raise a ValueError.
-        To use the index as column just set `time_col` to `'index'`.
+        Column of the input DataFrame that will be used to split the data.
+        This column should be of type datetime. If split is called with a
+        DataFrame for which this column is not a datetime, it will raise a
+        ValueError. To use the index as column just set `time_col` to 'index'.
     """
 
-    def __init__(self, time_col="index"):  # noqa: D107
+    def __init__(self, time_col="index"):
+        """Initialize the cross-validator."""
         self.time_col = time_col
 
     def _extract_time(self, X):
@@ -172,14 +166,13 @@ class MonthlySplit(BaseCrossValidator):
             ).reset_index(drop=True)
         else:
             if self.time_col not in X.columns:
-                raise ValueError("Error")
+                raise ValueError("Error: time_col not found in input")
             extracted_time = X[self.time_col].reset_index(drop=True)
 
         if not pd.api.types.is_datetime64_any_dtype(extracted_time):
             raise ValueError(f"{self.time_col} must be a datetime")
 
-        extracted_time = pd.to_datetime(extracted_time)
-        return extracted_time
+        return pd.to_datetime(extracted_time)
 
     def get_n_splits(self, X, y=None, groups=None):
         """Return the number of splitting iterations in the cross-validator.
@@ -187,12 +180,11 @@ class MonthlySplit(BaseCrossValidator):
         Parameters
         ----------
         X : array-like of shape (n_samples, n_features)
-            Training data, where `n_samples` is the number of samples
-            and `n_features` is the number of features.
+            Training data.
         y : array-like of shape (n_samples,)
-            Always ignored, exists for compatibility.
+            Ignored.
         groups : array-like of shape (n_samples,)
-            Always ignored, exists for compatibility.
+            Ignored.
 
         Returns
         -------
@@ -209,12 +201,11 @@ class MonthlySplit(BaseCrossValidator):
         Parameters
         ----------
         X : array-like of shape (n_samples, n_features)
-            Training data, where `n_samples` is the number of samples
-            and `n_features` is the number of features.
+            Training data.
         y : array-like of shape (n_samples,)
-            Always ignored, exists for compatibility.
+            Ignored.
         groups : array-like of shape (n_samples,)
-            Always ignored, exists for compatibility.
+            Ignored.
 
         Yields
         ------
